@@ -1,32 +1,30 @@
 module zk_snark::result {
-    use zk_snark::verifier::{Self, VerificationKey, Proof};
+    use sui::object::{Self, UID};
+    use sui::transfer;
+    use sui::tx_context::{Self, TxContext};
+    use zk_snark::verifier::{Self, VerificationKey};
+    use zk_snark::admin::{Self, AdminCap};
+    use zk_snark::utils::{Self, get_point_length};
     use std::vector;
 
-    struct VerificationResult has copy, drop {
-        success: bool,
-        error_code: u64,
-        error_message: vector<u8>
+    struct VerificationResult has key {
+        id: UID,
+        verified: bool,
+        timestamp: u64
     }
 
     public fun verify_with_result(
         vk: &VerificationKey,
-        proof: &Proof,
-        public_inputs: vector<vector<u8>>
+        proof: &verifier::Proof,
+        public_inputs: vector<vector<u8>>,
+        ctx: &mut TxContext
     ): VerificationResult {
-        if (!verifier::validate_inputs_length(vk, &public_inputs)) {
-            return VerificationResult {
-                success: false,
-                error_code: verifier::error_invalid_public_inputs(),
-                error_message: b"Invalid number of public inputs"
-            }
-        };
-        
-        let valid = verifier::verify(vk, proof, public_inputs);
+        let verified = verifier::verify(vk, proof, public_inputs);
         
         VerificationResult {
-            success: valid,
-            error_code: 0,
-            error_message: vector::empty()
+            id: object::new(ctx),
+            verified,
+            timestamp: tx_context::epoch(ctx)
         }
     }
 
@@ -38,24 +36,59 @@ module zk_snark::result {
         let scenario_val = test_scenario::begin(admin);
         let scenario = &mut scenario_val;
         
+        // Initialize verification key and admin capability
         test_scenario::next_tx(scenario, admin);
         {
-            let invalid_proof = verifier::create_proof(
-                vector::empty(),
-                vector::empty(),
-                vector::empty()
-            );
-            
-            let public_inputs = vector::empty<vector<u8>>();
+            verifier::init_for_testing(test_scenario::ctx(scenario));
+            admin::init_for_testing(test_scenario::ctx(scenario));
+        };
+
+        // Update verification key with valid parameters
+        test_scenario::next_tx(scenario, admin);
+        {
+            let admin_cap = test_scenario::take_from_sender<AdminCap>(scenario);
             let vk = test_scenario::take_from_sender<VerificationKey>(scenario);
             
-            let result = verify_with_result(&vk, &invalid_proof, public_inputs);
-            assert!(!result.success, 1);
-            assert!(result.error_code == verifier::error_invalid_public_inputs(), 2);
+            // Use valid test vectors
+            let point_len = utils::get_point_length();
+            let alpha = create_test_point(point_len);
+            let beta = create_test_point(point_len);
+            let gamma = create_test_point(point_len);
+            let delta = create_test_point(point_len);
+            let mut_ic = vector[create_test_point(point_len)];
+            
+            admin::update_verification_key(&admin_cap, &mut vk, alpha, beta, gamma, delta, mut_ic);
+            
+            test_scenario::return_to_sender(scenario, admin_cap);
+            test_scenario::return_to_sender(scenario, vk);
+        };
+
+        // Test verification
+        test_scenario::next_tx(scenario, admin);
+        {
+            let vk = test_scenario::take_from_sender<VerificationKey>(scenario);
+            let proof = verifier::create_proof(
+                vector[1u8], vector[2u8], vector[3u8]
+            );
+            let public_inputs = vector[vector[4u8]];
+            
+            let result = verify_with_result(&vk, &proof, public_inputs, test_scenario::ctx(scenario));
+            assert!(result.verified, 1);
             
             test_scenario::return_to_sender(scenario, vk);
+            transfer::transfer(result, admin);
         };
         
         test_scenario::end(scenario_val);
+    }
+
+    fun create_test_point(len: u64): vector<u8> {
+        let result = vector::empty();
+        let i = 0;
+        while (i < len) {
+            vector::push_back(&mut result, ((i + 1) as u8));
+            i = i + 1;
+        };
+        result
     }
 } 

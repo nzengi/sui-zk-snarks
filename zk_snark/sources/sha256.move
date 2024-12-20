@@ -78,7 +78,7 @@ module zk_snark::sha256 {
 
     public fun finalize(state: &mut SHA256State): vector<u8> {
         // Add padding
-        let data_len = vector::length(&state.data);
+        let _data_len = vector::length(&state.data);
         let total_len = state.len * 8; // Length in bits
         
         // Add 1 bit
@@ -90,10 +90,11 @@ module zk_snark::sha256 {
         };
         
         // Add length as big-endian 64-bit integer
-        let i = 7;
-        while (i >= 0) {
-            vector::push_back(&mut state.data, ((total_len >> (i * 8)) & 0xFF as u8));
-            i = i - 1;
+        let mut_i = 7;
+        while (mut_i >= 0) {
+            vector::push_back(&mut state.data, ((total_len >> (mut_i * 8)) & 0xFF as u8));
+            mut_i = mut_i - 1;
+            if (mut_i == 0) break;
         };
         
         // Process remaining blocks
@@ -118,6 +119,9 @@ module zk_snark::sha256 {
     }
 
     fun process_block(state: &mut SHA256State) {
+        // Ensure we have enough data
+        assert!(vector::length(&state.data) >= BLOCK_SIZE, E_INVALID_LENGTH);
+        
         // 1. Prepare message schedule
         let w = vector::empty();
         let i = 0;
@@ -180,18 +184,20 @@ module zk_snark::sha256 {
         // 3. Main loop
         let i = 0;
         while (i < 64) {
+            let k_i = *vector::borrow(&K, i);
+            let w_i = *vector::borrow(&w, i);
+            
             let s1 = bitwise_xor(
                 rightrotate(e, 6),
                 bitwise_xor(rightrotate(e, 11), rightrotate(e, 25))
             );
 
-            // ch = (e & f) ^ (!e & g)
             let ch = bitwise_xor(
                 bitwise_and(e, f),
                 bitwise_and(bitwise_not(e), g)
             );
 
-            let temp1 = h + s1 + ch + *vector::borrow(&K, i) + *vector::borrow(&w, i);
+            let temp1 = h + s1 + ch + k_i + w_i;
             
             let s0 = bitwise_xor(
                 rightrotate(a, 2),
@@ -237,17 +243,22 @@ module zk_snark::sha256 {
 
     fun rightrotate(value: u32, shift: u8): u32 {
         let value64 = (value as u64);
-        ((value64 >> (shift as u8)) | (value64 << (32 - (shift as u8))) as u32)
+        let shift32 = ((shift % 32) as u8);
+        let right = value64 >> shift32;
+        let left = value64 << (32 - shift32);
+        ((right | left) & 0xFFFFFFFF) as u32
     }
 
     fun leftshift(value: u32, shift: u8): u32 {
         let value64 = (value as u64);
-        ((value64 << (shift as u8)) as u32)
+        let shift32 = ((shift % 32) as u8);
+        ((value64 << shift32) & 0xFFFFFFFF) as u32
     }
 
     fun rightshift(value: u32, shift: u8): u32 {
         let value64 = (value as u64);
-        ((value64 >> (shift as u8)) as u32)
+        let shift32 = ((shift % 32) as u8);
+        (value64 >> shift32) as u32
     }
 
     // Bitwise operations
