@@ -2,21 +2,29 @@
 
 import { ConnectButton } from '@mysten/dapp-kit';
 import { Button } from '@/components/ui/button';
-import { ComponentProps } from 'react';
+import { ReactNode } from 'react';
 
-type ConnectButtonRenderProps = ComponentProps<typeof ConnectButton>['children'];
+interface ConnectButtonProps {
+  connected: boolean;
+  connecting: boolean;
+  connect: () => void;
+  disconnect: () => void;
+}
 
 export function WalletConnectButton() {
   return (
     <ConnectButton>
-      {({ connected, connecting, connect, disconnect }: ConnectButtonRenderProps) => (
-        <Button
-          onClick={connected ? disconnect : connect}
-          disabled={connecting}
-        >
-          {connecting ? 'Connecting...' : connected ? 'Disconnect' : 'Connect Wallet'}
-        </Button>
-      )}
+      {(props: ConnectButtonProps): ReactNode => {
+        const { connected, connecting, connect, disconnect } = props;
+        return (
+          <Button
+            onClick={connected ? disconnect : connect}
+            disabled={connecting}
+          >
+            {connecting ? 'Connecting...' : connected ? 'Disconnect' : 'Connect Wallet'}
+          </Button>
+        );
+      }}
     </ConnectButton>
   );
 }
