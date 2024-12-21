@@ -360,4 +360,53 @@ module zk_snark::sha256 {
         // Test rotate
         assert!(rightrotate(0x01234567, 8) == 0x67012345, 8);
     }
+
+    struct TestVector has drop {
+        input: vector<u8>,
+        expected: vector<u8>
+    }
+
+    #[test]
+    fun test_invalid_inputs() {
+        // Test empty input
+        let state = new();
+        let result = finalize(&mut state);
+        assert!(vector::length(&result) == OUTPUT_SIZE, E_INVALID_LENGTH);
+
+        // Test large input
+        let state = new();
+        let mut_i = 0;
+        let large_input = vector::empty();
+        while (mut_i < BLOCK_SIZE * 2) {
+            vector::push_back(&mut large_input, (mut_i as u8));
+            mut_i = mut_i + 1;
+        };
+        update(&mut state, &large_input);
+        let result = finalize(&mut state);
+        assert!(vector::length(&result) == OUTPUT_SIZE, E_INVALID_LENGTH);
+
+        // Test known vectors
+        let test_vectors = vector::empty();
+        vector::push_back(&mut test_vectors, TestVector {
+            input: b"",
+            expected: x"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        });
+
+        let i = 0;
+        while (i < vector::length(&test_vectors)) {
+            let test_vector = vector::borrow(&test_vectors, i);
+            let state = new();
+            update(&mut state, &test_vector.input);
+            let result = finalize(&mut state);
+            assert!(compare_hash(&result, &test_vector.expected), E_INVALID_STATE);
+            i = i + 1;
+        };
+    }
+
+    #[test]
+    #[expected_failure(abort_code = E_INVALID_LENGTH)]
+    fun test_invalid_block_size() {
+        let state = new();
+        process_block(&mut state); // Should fail because data is empty
+    }
 } 

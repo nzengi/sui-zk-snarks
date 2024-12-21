@@ -2,12 +2,17 @@ module zk_snark::admin {
     use sui::object::{Self, UID};
     use sui::transfer;
     use sui::tx_context::{Self, TxContext};
-    use zk_snark::verifier::VerificationKey;
+    use zk_snark::key_types::VerificationKey;
     use zk_snark::admin_impl;
 
     // Admin capability
     struct AdminCap has key {
         id: UID
+    }
+
+    // Public function to check if a capability is valid
+    public fun is_admin(cap: &AdminCap): bool {
+        object::id(cap) != object::id_from_address(@0x0)
     }
 
     // Initialize admin

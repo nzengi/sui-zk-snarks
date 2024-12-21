@@ -1,7 +1,8 @@
 module zk_snark::admin_impl {
     friend zk_snark::admin;
     
-    use zk_snark::verifier::{Self, VerificationKey};
+    use zk_snark::key_types::VerificationKey;
+    use zk_snark::verifier_impl;
 
     public(friend) fun update_key_params(
         vk: &mut VerificationKey,
@@ -11,10 +12,10 @@ module zk_snark::admin_impl {
         delta: vector<u8>,
         ic: vector<vector<u8>>
     ) {
-        verifier::update_key_params(vk, alpha, beta, gamma, delta, ic)
+        verifier_impl::update_key_params(vk, alpha, beta, gamma, delta, ic)
     }
 
     public(friend) fun disable_key(vk: &mut VerificationKey) {
-        verifier::disable_key(vk)
+        verifier_impl::disable_key(vk)
     }
 } 

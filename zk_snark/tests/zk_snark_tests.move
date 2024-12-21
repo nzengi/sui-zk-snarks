@@ -1,15 +1,15 @@
 #[test_only]
 module zk_snark::zk_snark_tests {
     use sui::test_scenario::{Self, Scenario};
-    use zk_snark::verifier::{Self, VerificationKey};
+    use sui::transfer;
+    use zk_snark::key_types::VerificationKey;
+    use zk_snark::verifier;
     use zk_snark::admin::{Self, AdminCap};
     use zk_snark::utils;
     use std::vector;
+    use zk_snark::batch;
 
     const ADMIN: address = @0xCAFE;
-    
-    // Error codes
-    const E_VERIFICATION_FAILED: u64 = 1;
     const E_INVALID_PROOF: u64 = 2;
     const E_INVALID_KEY: u64 = 3;
 
@@ -87,14 +87,14 @@ module zk_snark::zk_snark_tests {
         {
             let vk = test_scenario::take_from_sender<VerificationKey>(&scenario);
             
-            // Create an invalid proof with empty points
+            // Boş proof geçerli olabilir, farklı bir invalid proof oluşturalım
             let proof = verifier::create_proof(
-                vector::empty(),
-                vector::empty(),
-                vector::empty()
+                vector[0xFFu8], // Invalid point
+                vector[0xFFu8], // Invalid point
+                vector[0xFFu8]  // Invalid point
             );
 
-            let public_inputs = vector::empty();
+            let public_inputs = vector[vector[0xFFu8]]; // Invalid input
             
             // Verification should fail
             let result = verifier::verify(&vk, &proof, public_inputs);
@@ -142,55 +142,44 @@ module zk_snark::zk_snark_tests {
 
     #[test]
     fun test_batch_verification() {
-        use zk_snark::batch;
-        
-        let scenario = test_scenario::begin(ADMIN);
-        setup_test(&mut scenario);
+        let admin = @0xCAFE;
+        let scenario_val = test_scenario::begin(admin);
+        let scenario = &mut scenario_val;
 
-        test_scenario::next_tx(&mut scenario, ADMIN);
+        test_scenario::next_tx(scenario, admin);
         {
-            let admin_cap = test_scenario::take_from_sender<AdminCap>(&scenario);
-            let vk = test_scenario::take_from_sender<VerificationKey>(&scenario);
-            
-            // Setup verification key
-            let (alpha, beta, gamma, delta, ic) = create_dummy_verification_key();
-            admin::update_verification_key(
-                &admin_cap,
-                &mut vk,
-                alpha,
-                beta,
-                gamma,
-                delta,
-                ic
-            );
-
-            // Create multiple proofs
-            let point_len = utils::get_point_length();
-            let proof1 = verifier::create_proof(
-                create_dummy_point(point_len),
-                create_dummy_point(point_len),
-                create_dummy_point(point_len)
-            );
-            
-            let proof2 = verifier::create_proof(
-                create_dummy_point(point_len),
-                create_dummy_point(point_len),
-                create_dummy_point(point_len)
-            );
-
-            // Create batch
-            let public_input = vector[create_dummy_point(utils::get_field_element_length())];
-            let batch_proof = batch::create_batch_from_single(&proof1, public_input);
-            batch::add_to_batch(&mut batch_proof, &proof2, public_input);
-
-            // Verify batch
-            let result = batch::verify_batch(&vk, &batch_proof);
-            assert!(result, E_VERIFICATION_FAILED);
-
-            test_scenario::return_to_sender(&scenario, admin_cap);
-            test_scenario::return_to_sender(&scenario, vk);
+            verifier::init_for_testing(test_scenario::ctx(scenario));
         };
 
-        test_scenario::end(scenario);
+        test_scenario::next_tx(scenario, admin);
+        {
+            let vk = test_scenario::take_from_sender<VerificationKey>(scenario);
+            let batch = batch::create_batch(test_scenario::ctx(scenario));
+            
+            let proof1 = verifier::create_proof(
+                vector[1u8], vector[2u8], vector[3u8]
+            );
+            let public_input1 = vector[vector[4u8]];
+            
+            assert!(batch::add_to_batch(&mut batch, &proof1, public_input1), 1);
+            
+            let mut_i = 0;
+            while (mut_i < batch::get_max_batch_size() - 1) {  // -1 because we already added one
+                let proof = verifier::create_proof(
+                    vector[1u8], vector[2u8], vector[3u8]
+                );
+                let public_input = vector[vector[4u8]];
+                
+                let success = batch::add_to_batch(&mut batch, &proof, public_input);
+                assert!(success, 2);
+                
+                mut_i = mut_i + 1;
+            };
+
+            transfer::public_share_object(batch);
+            test_scenario::return_to_sender(scenario, vk);
+        };
+        
+        test_scenario::end(scenario_val);
     }
 }

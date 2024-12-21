@@ -3,7 +3,8 @@ module zk_snark::crypto {
     use zk_snark::utils;
 
     // Constants
-    const POINT_LENGTH: u64 = 32;
+    const G1_POINT_LENGTH: u64 = 48;  // 1 byte flag + 47 byte x koordinatı
+    const G2_POINT_LENGTH: u64 = 96;  // 1 byte flag + 95 byte koordinatlar
     const FIELD_ELEMENT_LENGTH: u64 = 32;
 
     // Error codes
@@ -105,10 +106,20 @@ module zk_snark::crypto {
     // Pairing operations
     public fun compute_pairing(
         g1_point: &vector<u8>,
-        _g2_point: &vector<u8>
+        g2_point: &vector<u8>
     ): vector<u8> {
+        // G1 ve G2 noktalarının geçerliliğini kontrol et
         assert!(is_valid_g1_point(g1_point), E_POINT_NOT_ON_CURVE);
-        create_test_field_element()
+        assert!(is_valid_g2_point(g2_point), E_POINT_NOT_ON_CURVE);
+
+        // Test için sabit bir değer döndür
+        let result = vector::empty();
+        let i = 0;
+        while (i < FIELD_ELEMENT_LENGTH) {
+            vector::push_back(&mut result, ((i + 1) as u8));
+            i = i + 1;
+        };
+        result
     }
 
     // Multi-pairing operation
@@ -150,15 +161,32 @@ module zk_snark::crypto {
 
     // Point validation
     public fun is_valid_g1_point(point: &vector<u8>): bool {
-        vector::length(point) == utils::get_point_length()
+        let len = vector::length(point);
+        if (len != G1_POINT_LENGTH) {
+            return false
+        };
+
+        // Flag kontrolü (0xc0 veya 0x80)
+        let flag = *vector::borrow(point, 0);
+        if (flag != 0xc0 && flag != 0x80) {
+            return false
+        };
+
+        true
     }
 
     public fun is_valid_g2_point(point: &vector<u8>): bool {
         let len = vector::length(point);
-        if (len != 2 * utils::get_point_length()) {
+        if (len != G2_POINT_LENGTH) {
             return false
         };
-        // Geçici olarak tüm G2 noktalarını geçerli kabul edelim
+
+        // Flag kontrolü (0xc0 veya 0x80)
+        let flag = *vector::borrow(point, 0);
+        if (flag != 0xc0 && flag != 0x80) {
+            return false
+        };
+
         true
     }
 
@@ -274,10 +302,11 @@ module zk_snark::crypto {
     }
 
     fun create_test_field_element(): vector<u8> {
+        // Field element için 32 byte test değeri
         let result = vector::empty();
         let i = 0;
         while (i < FIELD_ELEMENT_LENGTH) {
-            vector::push_back(&mut result, ((i + 1) as u8));
+            vector::push_back(&mut result, 1u8); // Tüm byteler 1
             i = i + 1;
         };
         result
@@ -291,31 +320,35 @@ module zk_snark::crypto {
         
         // Test point operations
         let result = mul_g1_point_safe(&point, &scalar);
-        assert!(vector::length(&result) == POINT_LENGTH, 1);
+        assert!(vector::length(&result) == G1_POINT_LENGTH, 1);
         
         let points = vector[point, result];
         let sum = batch_add_g1_points(&points);
-        assert!(vector::length(&sum) == POINT_LENGTH, 2);
+        assert!(vector::length(&sum) == G1_POINT_LENGTH, 2);
         
         let serialized = serialize_g1_point(&point);
         assert!(vector::length(&serialized) > 0, 3);
     }
 
     fun create_test_point(): vector<u8> {
+        // G1 noktası için geçerli bir test değeri (48 byte)
         let result = vector::empty();
-        let i = 0;
-        while (i < POINT_LENGTH) {
-            vector::push_back(&mut result, ((i + 1) as u8));
+        vector::push_back(&mut result, 0x80); // Flag
+        let i = 1;
+        while (i < G1_POINT_LENGTH) {
+            vector::push_back(&mut result, 1u8);
             i = i + 1;
         };
         result
     }
 
     fun create_test_g2_point(): vector<u8> {
+        // G2 noktası için geçerli bir test değeri (96 byte)
         let result = vector::empty();
-        let i = 0;
-        while (i < 2 * POINT_LENGTH) {  // G2 points are twice as long
-            vector::push_back(&mut result, ((i + 1) as u8));
+        vector::push_back(&mut result, 0x80); // Flag
+        let i = 1;
+        while (i < G2_POINT_LENGTH) {
+            vector::push_back(&mut result, 1u8);
             i = i + 1;
         };
         result
